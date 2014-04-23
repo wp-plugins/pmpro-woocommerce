@@ -3,7 +3,7 @@
 Plugin Name: PMPro WooCommerce
 Plugin URI: http://www.paidmembershipspro.com/pmpro-woocommerce/
 Description: Integrate WooCommerce with Paid Memberships Pro.
-Version: 1.1.1
+Version: 1.2
 Author: Stranger Studios
 Author URI: http://www.strangerstudios.com
 
@@ -466,3 +466,50 @@ function pmprowoo_woocommerce_after_checkout_registration_form()
 	}
 }
 add_action('woocommerce_after_checkout_registration_form', 'pmprowoo_woocommerce_after_checkout_registration_form');
+
+/*
+	When the Woo Commerce Billing Address fields are updated, update the equivalent PMPro Fields
+*/
+function pmprowoo_update_user_meta($meta_id, $object_id, $meta_key, $meta_value)
+{	
+	//tracks updates that are made
+	global $pmprowoo_updated_user_meta;	
+	if(empty($pmprowoo_updated_user_meta))
+		$pmprowoo_updated_user_meta = array();
+	
+	//array of user meta to mirror
+	$um = array(
+		"billing_first_name" => "pmpro_bfirstname",
+		"billing_last_name" => "pmpro_blastname",
+		"billing_address_1" => "pmpro_baddress1",
+		"billing_address_2" => "pmpro_baddress2",
+		"billing_city" => "pmpro_bcity",
+		"billing_postcode" => "pmpro_bzipcode",
+		"billing_state" => "pmpro_bstate",
+		"billing_country" => "pmpro_bcountry",
+		"billing_phone" => "pmpro_bphone",
+		"billing_email" => "pmpro_bemail",
+		"pmpro_bfirstname" => "billing_first_name",
+		"pmpro_blastname" => "billing_last_name",
+		"pmpro_baddress1" => "billing_address_1",
+		"pmpro_baddress2" => "billing_address_2",
+		"pmpro_bcity" => "billing_city",
+		"pmpro_bzipcode" => "billing_postcode",
+		"pmpro_bstate" => "billing_state",
+		"pmpro_bcountry" => "billing_country",
+		"pmpro_bphone" => "billing_phone",
+		"pmpro_bemail" => "billing_email"
+	);		
+		
+	//check if this user meta is to be mirrored
+	foreach($um as $left => $right)
+	{
+		if($meta_key == $left && !in_array($left, $pmprowoo_updated_user_meta))
+		{			
+			$pmprowoo_updated_user_meta[] = $left;
+			update_user_meta($object_id, $right, $meta_value);			
+		}
+	}
+}
+add_action('update_user_meta', 'pmprowoo_update_user_meta', 10, 4);
+add_action('add_user_meta', 'pmprowoo_update_user_meta', 10, 4);
