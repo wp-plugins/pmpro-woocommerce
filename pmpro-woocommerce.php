@@ -3,7 +3,7 @@
 Plugin Name: PMPro WooCommerce
 Plugin URI: http://www.paidmembershipspro.com/pmpro-woocommerce/
 Description: Integrate WooCommerce with Paid Memberships Pro.
-Version: 1.2.1
+Version: 1.2.2
 Author: Stranger Studios
 Author URI: http://www.strangerstudios.com
 
@@ -77,9 +77,33 @@ function pmprowoo_add_membership_from_order($order_id)
                 if(in_array($item['product_id'], $product_ids))
                 {
 
-                    //add the user to the level
-                    pmpro_changeMembershipLevel($pmprowoo_product_levels[$item['product_id']], $order->customer_user);
+                    //get user id and level
+                    $user_id = $order->customer_user;
+                    $pmpro_level = pmpro_getLevel($pmprowoo_product_levels[$item['product_id']]);
 
+                    //create custom level to mimic PMPro checkout
+                    $custom_level = array(
+                        'user_id' => $user_id,
+                        'membership_id' => $pmpro_level->id,
+                        'code_id' => '', //will support PMPro discount codes later
+                        'initial_payment' => $item['line_total'],
+                        'billing_amount' => '',
+                        'cycle_number' => '',
+                        'cycle_period' => '',
+                        'billing_limit' => '',
+                        'trial_amount' => '',
+                        'trial_limit' => '',
+                        'startdate' => 'NOW()',
+                        'enddate' => '0000-00-00 00:00:00'
+                    );
+
+					//set enddate
+					if(!empty($pmpro_level->expiration_number))
+						$custom_level['enddate'] = date("Y-m-d", strtotime("+ " . $pmpro_level->expiration_number . " " . $pmpro_level->expiration_period));
+										
+                    //let woocommerce handle everything but we can filter if we want to
+                    pmpro_changeMembershipLevel(apply_filters('pmprowoo_checkout_level', $custom_level), $user_id);
+					
                     //only going to process the first membership product, so break the loop
                     break;
                 }
@@ -245,21 +269,25 @@ function pmprowoo_get_membership_price($price, $product)
     }
 	
     // use cart membership level price if set, otherwise use current member level
-    if (isset($cart_membership_level))
+    if (isset($cart_membership_level)) {
         $level_price = '_level_' . $cart_membership_level . '_price';
-    elseif (pmpro_hasMembershipLevel())
+        $level_id = $cart_membership_level;
+    }
+    elseif (pmpro_hasMembershipLevel()) {
         $level_price = '_level_' . $current_user->membership_level->id . '_price';
+        $level_id = $current_user->membership_level->id;
+    }
     else
         return $price;
-	
+
     // use this level to get the price
     if (isset($level_price) ) {
         if (get_post_meta($product->id, $level_price, true))
             $discount_price =  get_post_meta($product->id, $level_price, true);
 
         // apply discounts if there are any for this level
-        if(isset($pmprowoo_member_discounts[$cart_membership_level])) {
-            $discount_price  = $discount_price - ( $discount_price * $pmprowoo_member_discounts[$cart_membership_level]);
+        if(isset($level_id)) {
+            $discount_price  = $discount_price - ( $discount_price * $pmprowoo_member_discounts[$level_id]);
         }
     }
 
@@ -417,21 +445,19 @@ add_action("pmpro_save_membership_level", "pmprowoo_save_membership_level");
 /*
  *  Add Discounts on Subscriptions to PMPro Advanced Settings - will uncomment when filter is added to core
  */
-//function pmprowoo_custom_settings() {
-//    $fields = array(
-//        'field1' => array(
-//            'field_name' => 'pmprowoo_discounts_on_subscriptions',
-//            'field_type' => 'select',
-//            'label' => 'Apply Discounts to Subscriptions?',
-//            'value' => 'No',
-//            'options' => array('Yes','No')
-//        )
-//    );
-//    return $fields;
-//
-//}
-//
-//add_filter('pmpro_custom_advanced_settings', 'pmprowoo_custom_settings');
+function pmprowoo_custom_settings() {
+    $fields = array(
+        'field1' => array(
+            'field_name' => 'pmprowoo_discounts_on_subscriptions',
+            'field_type' => 'select',
+            'label' => 'Apply Member Discounts to WC Subscription Products?',
+            'value' => 'No',
+            'options' => array('Yes','No')
+        )
+    );
+    return $fields;
+}
+add_filter('pmpro_custom_advanced_settings', 'pmprowoo_custom_settings');
 
 /*
 	Force account creation at WooCommerce checkout if the cart includes a membership product.
